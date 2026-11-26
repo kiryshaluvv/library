@@ -1,0 +1,387 @@
+openapi: 3.0.3
+info:
+  title: Library API
+  version: 1.0.0
+  description: |
+    REST API библиотеки: каталог книг, читатели, выдача и возврат книг,
+    импорт книг из CSV/JSON и текстовые отчёты.
+    События выдачи, возврата и просрочки отправляются в RabbitMQ и обрабатываются сервисом notifier.
+servers:
+  - url: /
+tags:
+  - name: books
+    description: Каталог книг
+  - name: readers
+    description: Читатели
+  - name: loans
+    description: Выдача и возврат
+  - name: files
+    description: Импорт и отчёты
+  - name: system
+    description: Служебное
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Проверка, что сервис жив
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /api/books:
+    get:
+      tags: [books]
+      summary: Список книг
+      parameters:
+        - name: search
+          in: query
+          description: Поиск по названию или автору
+          schema: { type: string }
+      responses:
+        "200":
+          description: Список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Book" }
+    post:
+      tags: [books]
+      summary: Добавить книгу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookInput" }
+      responses:
+        "201":
+          description: Создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Book" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/books/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [books]
+      summary: Получить книгу
+      responses:
+        "200":
+          description: Книга
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Book" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [books]
+      summary: Изменить книгу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookInput" }
+      responses:
+        "200":
+          description: Изменена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Book" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [books]
+      summary: Удалить книгу
+      responses:
+        "204": { description: Удалена }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/readers:
+    get:
+      tags: [readers]
+      summary: Список читателей
+      responses:
+        "200":
+          description: Список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Reader" }
+    post:
+      tags: [readers]
+      summary: Зарегистрировать читателя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReaderInput" }
+      responses:
+        "201":
+          description: Создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reader" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/readers/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [readers]
+      summary: Получить читателя
+      responses:
+        "200":
+          description: Читатель
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reader" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [readers]
+      summary: Изменить читателя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReaderInput" }
+      responses:
+        "200":
+          description: Изменён
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reader" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [readers]
+      summary: Удалить читателя
+      responses:
+        "204": { description: Удалён }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/loans:
+    get:
+      tags: [loans]
+      summary: Список выдач
+      parameters:
+        - name: status
+          in: query
+          description: "active — на руках, overdue — просроченные, пусто — все"
+          schema:
+            type: string
+            enum: [active, overdue]
+      responses:
+        "200":
+          description: Список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Loan" }
+    post:
+      tags: [loans]
+      summary: Выдать книгу читателю
+      description: Отправляет событие loan.issued в RabbitMQ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssueInput" }
+      responses:
+        "201":
+          description: Выдана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Loan" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/loans/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [loans]
+      summary: Получить выдачу
+      responses:
+        "200":
+          description: Выдача
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Loan" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/loans/{id}/return:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [loans]
+      summary: Вернуть книгу
+      description: Отправляет событие loan.returned в RabbitMQ.
+      responses:
+        "200":
+          description: Возвращена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Loan" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/import/books:
+    post:
+      tags: [files]
+      summary: Импорт книг из CSV или JSON
+      description: |
+        В тело запроса кладётся содержимое файла.
+        CSV — с заголовком `title,author,year,isbn,total`.
+        JSON — массив объектов BookInput.
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [csv, json]
+            default: csv
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: { type: string }
+            example: |
+              title,author,year,isbn,total
+              Мастер и Маргарита,Михаил Булгаков,1967,978-5-17-000001-1,3
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/BookInput" }
+      responses:
+        "200":
+          description: Итог импорта
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/reports/loans:
+    get:
+      tags: [files]
+      summary: Текстовый отчёт о книгах на руках
+      description: Отчёт сохраняется в папку reports на сервере и отдаётся как файл.
+      responses:
+        "200":
+          description: Файл отчёта
+          content:
+            text/plain:
+              schema: { type: string }
+
+components:
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Конфликт (дубликат, нет экземпляров, уже возвращена)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    Book:
+      type: object
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        title: { type: string, example: Мастер и Маргарита }
+        author: { type: string, example: Михаил Булгаков }
+        year: { type: integer, example: 1967 }
+        isbn: { type: string, example: 978-5-17-000001-1 }
+        total: { type: integer, example: 3 }
+        available: { type: integer, example: 2 }
+        created_at: { type: string, format: date-time }
+
+    BookInput:
+      type: object
+      required: [title, author]
+      properties:
+        title: { type: string, example: Мастер и Маргарита }
+        author: { type: string, example: Михаил Булгаков }
+        year: { type: integer, example: 1967 }
+        isbn: { type: string, example: 978-5-17-000001-1 }
+        total: { type: integer, example: 3 }
+
+    Reader:
+      type: object
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        name: { type: string, example: Иван Петров }
+        email: { type: string, example: ivan@example.com }
+        phone: { type: string, example: "+79990000000" }
+        created_at: { type: string, format: date-time }
+
+    ReaderInput:
+      type: object
+      required: [name, email]
+      properties:
+        name: { type: string, example: Иван Петров }
+        email: { type: string, example: ivan@example.com }
+        phone: { type: string, example: "+79990000000" }
+
+    Loan:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        book_id: { type: integer, format: int64 }
+        book_title: { type: string }
+        reader_id: { type: integer, format: int64 }
+        reader_name: { type: string }
+        issued_at: { type: string, format: date-time }
+        due_at: { type: string, format: date-time }
+        returned_at: { type: string, format: date-time, nullable: true }
+
+    IssueInput:
+      type: object
+      required: [book_id, reader_id]
+      properties:
+        book_id: { type: integer, format: int64, example: 1 }
+        reader_id: { type: integer, format: int64, example: 1 }
+        days:
+          type: integer
+          example: 14
+          description: "Срок в днях (по умолчанию 14). 0 — книга сразу просрочена, удобно для демонстрации."
+
+    ImportResult:
+      type: object
+      properties:
+        imported: { type: integer }
+        skipped: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
